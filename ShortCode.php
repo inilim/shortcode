@@ -62,30 +62,35 @@ Class ShortCode
     * добавить шорткод в конец текущей очереди.
     * 
     */
-   public function addLastPosCurrentQueue (string $name, string $value = ''):bool
+   public function addLastPosCurrentQueue (string $anyName, string $value = ''):bool
    {
       $this->checkCallPublicMethod();
-      return $this->addPosCurrentQueue($name, $value, true);
+      return $this->addPosCurrentQueue($anyName, $value, true);
    }
    /**
     * добавить шорткод сразу после текущего шорткода в текущей очереди
     * 
     */
-   public function addAfterPosCurrentQueue (string $name, string $value = ''):bool
+   public function addAfterPosCurrentQueue (string $anyName, string $value = ''):bool
    {
       $this->checkCallPublicMethod();
-      return $this->addPosCurrentQueue($name, $value);
+      return $this->addPosCurrentQueue($anyName, $value);
    }
 
    /**
     * добавить шорткод в текущую очередь.
     * 
     */
-   private function addPosCurrentQueue (string $name, string $value, bool $last = false):bool
+   private function addPosCurrentQueue (string $anyName, string $value, bool $last = false):bool
    {
-      $name = $this->getShortName($name);
-      $this->checkCallMySelf($name);
-      $this->toAddCurrentQueue[$name] = true;
+      $shortName = $this->getShortName($anyName);
+      $this->checkCallMySelf($shortName);
+      // шорткоды у которых был запрос не могут попасть в очередь
+      if($this->checkRequestCurrentShortCode($shortName))
+      {
+         return false;
+      }
+      $this->toAddCurrentQueue[$shortName] = true;
       $this->setQueue(value: $value, last: $last);
       return true;
    }
@@ -114,7 +119,7 @@ Class ShortCode
     * удалить шорткод из текущей очереди.
     * "в разработке"
     */
-   public function removeShortCodeCurrentQueue (string $allName)
+   public function removeShortCodeCurrentQueue (string $anyName)
    {
       $this->checkCallPublicMethod();
    }
@@ -123,7 +128,7 @@ Class ShortCode
    * удалить шорткод из всех очередей.
    * "в разработке"
    */
-   public function removeShortCodeAllQueue (string $allName)
+   public function removeShortCodeAllQueue (string $anyName)
    {
       $this->checkCallPublicMethod();
    }
@@ -138,9 +143,9 @@ Class ShortCode
     * Проверить существование запроса от текущего шорткода.
     * "в разработке"
     */
-   private function checkRequestCurrentShortCode (string $prefixName):bool
+   private function checkRequestCurrentShortCode (string $anyName):bool
    {
-      return isset($this->requests[$prefixName]);
+      return isset($this->requests[$this->getPrefixName($anyName)]);
    }
 
    /**
@@ -160,7 +165,6 @@ Class ShortCode
                $res[] = $shortNames ? $this->getShortName($prefixName) : $prefixName;
             }
          }
-         
       }
       return $res;
    }
@@ -177,11 +181,6 @@ Class ShortCode
       foreach($this->toAddCurrentQueue as $shortcode => $b)
       {
          $shortcode = $this->getShortName($shortcode);
-         // шорткоды у которых был запрос не могут попасть в очередь
-         if($this->checkRequestCurrentShortCode($this->getPrefixName($shortcode)))
-         {
-            continue;
-         }
 
          // записываем историю
          $this->historyToAddQueue[$this->currentLevel][$shortcode] = $b;
@@ -204,22 +203,22 @@ Class ShortCode
     * вернуть шорткод c префиксом
     *
     */
-   private function getPrefixName (string $allName):string
+   private function getPrefixName (string $anyName):string
    {
-      if(strpos($allName, $this->prefix) === 0)
+      if(strpos($anyName, $this->prefix) === 0)
       {
-         return $allName;
+         return $anyName;
       }
-      return $this->prefix . $allName;
+      return $this->prefix . $anyName;
    }
 
    /**
     * вернуть шорткод без префикса
     *
     */
-   private function getShortName (string $allName):string
+   private function getShortName (string $anyName):string
    {
-      return str_replace($this->prefix, '', $allName);
+      return str_replace($this->prefix, '', $anyName);
    }
 
    /**
@@ -381,7 +380,7 @@ Class ShortCode
       ];
    }
 
-   private function afterWork (string $prefixName, string $type_return):void
+   private function afterWork (string $prefixName, string $typeReturn):void
    {
       $key = array_keys($this->info[$this->currentLevel][$prefixName]);
       $key = end($key);
@@ -393,7 +392,7 @@ Class ShortCode
          $this->info[$this->currentLevel][$prefixName][$key]['request'] = true;
       }
 
-      $this->info[$this->currentLevel][$prefixName][$key]['typeReturn'] = strtolower($type_return);
+      $this->info[$this->currentLevel][$prefixName][$key]['typeReturn'] = strtolower($typeReturn);
    }
 
    private function strReplaceOnce (?string $search, ?string $replace, string &$text):string
@@ -449,7 +448,7 @@ Class ShortCode
       $functions = array_column($functions, 'function');
       if(!in_array($this->currentShortCode ?? '', $functions))
       {
-         throw new Exception('ShortCode Exception: Method call can only be in a function-shortcode'); 
+         throw new Exception('ShortCode Exception: Method call can only be in a function-shortcode');
       }
    }
 
