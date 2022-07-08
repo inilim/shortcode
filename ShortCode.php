@@ -58,6 +58,7 @@ Class ShortCode
    {
       $this->listFoundCode[$this->currentLevel] = array_map(fn($a) => $a[1], $this->currentQueue);
    }
+
    /**
     * добавить шорткод в конец текущей очереди.
     * 
@@ -67,6 +68,7 @@ Class ShortCode
       $this->checkCallPublicMethod();
       return $this->addPosCurrentQueue($anyName, $value, true);
    }
+
    /**
     * добавить шорткод сразу после текущего шорткода в текущей очереди
     * 
@@ -84,7 +86,10 @@ Class ShortCode
    private function addPosCurrentQueue (string $anyName, string $value, bool $last = false):bool
    {
       $shortName = $this->getShortName($anyName);
-      $this->checkCallMySelf($shortName);
+      if($this->checkCallMySelf($shortName))
+      {
+         return false;
+      }
       // шорткоды у которых был запрос не могут попасть в очередь
       if($this->checkRequestCurrentShortCode($shortName))
       {
@@ -132,7 +137,6 @@ Class ShortCode
    {
       $this->checkCallPublicMethod();
    }
-
 
    private function hash (string $request): string
    {
@@ -456,12 +460,13 @@ Class ShortCode
     * запрещаем класть в очередь шорткод из вызванного этого же шорткода
     *
     */
-   private function checkCallMySelf (string $shortName):void
+   private function checkCallMySelf (string $shortName):bool
    {
       if($this->getShortName($this->currentShortCode) === $shortName)
       {
-         throw new Exception('ShortCode Exception: You can\'t queue yourself');
+         return true;
       }
+      return false;
    }
 
    public function getAllInfo ():array
