@@ -18,6 +18,8 @@ Class ShortCode
 
    // массив для шорткодов
    private array $currentQueue = [];
+   // имя_шорткода => ключ
+   private array $keysCurrentQueue = [];
    // массив для шорткодов которые отработают в самом конце
    private array $queueLastWorkCurrentLevel = [];
 
@@ -27,8 +29,8 @@ Class ShortCode
    private array $info = [];
    // все найденные имена шорткодов
    private array $listFoundCode = [];
-   // шорткоды которые должны быть удалены
-   private array $forDeletion = [];
+   // шорткоды которые должны быть удалены во всех очередях
+   private array $forDeletionAllQueue = [];
    // шорткоды которые были удалены
    private array $removed = [];
    // история добавленных шорткодов
@@ -101,6 +103,36 @@ Class ShortCode
    }
 
    /**
+   * Поставить шорткод в очередь.
+   * Cразу после текущего шорткода или в конец
+   * 
+   */
+   private function setQueue (string $value, bool $last = false):void
+   {
+      if(!sizeof($this->toAddCurrentQueue)) return;
+
+      foreach($this->toAddCurrentQueue as $shortcode => $b)
+      {
+         $shortcode = $this->getShortName($shortcode);
+
+         // записываем историю
+         $this->historyToAddQueue[$this->currentLevel][$shortcode] = $b;
+
+         if($last)
+         {
+            $this->currentQueue[] = [null, $shortcode, $value];
+         }
+         else
+         {
+            array_splice($this->currentQueue, ($this->iteration+1), 0, [[null, $shortcode, $value]]);
+         }
+         $this->count++;
+      }
+      // ресетим очередь
+      $this->toAddCurrentQueue = [];
+   }
+
+   /**
     * добавляет запрос изнутри текущего функции шорткода.
     * "в разработке"
     */
@@ -122,20 +154,51 @@ Class ShortCode
 
    /**
     * удалить шорткод из текущей очереди.
-    * "в разработке"
+    * переделать
     */
-   public function removeShortCodeCurrentQueue (string $anyName)
+   public function removeShortCodeCurrentQueue (string $anyName, bool $all = false):bool
    {
       $this->checkCallPublicMethod();
+      $prefixName = $this->getPrefixName($anyName);
+
+      // удалить текущий шорткод нельзя.
+      if(isset($this->keysCurrentQueue[$prefixName]) && $this->currentShortCode !== $prefixName)
+      {
+         if($all)
+         {
+            foreach($this->keysCurrentQueue[$prefixName] as $key)
+            {
+               if(isset($this->currentQueue[ $key ]))
+               {
+                  unset($this->currentQueue[ $key ]);
+                  $this->count--;
+               }
+            }
+         }
+         else
+         {
+            if(isset($this->currentQueue[ current($this->keysCurrentQueue[$prefixName]) ]))
+            {
+               unset($this->currentQueue[ current($this->keysCurrentQueue[$prefixName]) ]);
+               $this->count--;
+            }
+         }
+         unset($this->keysCurrentQueue[$prefixName]);
+         // записываем удаление
+         $this->removed[$prefixName] = true;
+         return true;
+      }
+      return false;
    }
 
    /**
    * удалить шорткод из всех очередей.
-   * "в разработке"
+   * 
    */
-   public function removeShortCodeAllQueue (string $anyName)
+   public function removeShortCodeAllQueue (string $anyName, bool $all = false):void
    {
       $this->checkCallPublicMethod();
+      $this->forDeletionAllQueue[ $this->getPrefixName($anyName) ] = $all;
    }
 
    private function hash (string $request): string
@@ -171,36 +234,6 @@ Class ShortCode
          }
       }
       return $res;
-   }
-
-   /**
-    * Поставить шорткод в очередь.
-    * Cразу после текущего шорткода или в конец
-    * 
-    */
-   private function setQueue (string $value, bool $last = false):void
-   {
-      if(!sizeof($this->toAddCurrentQueue)) return;
-
-      foreach($this->toAddCurrentQueue as $shortcode => $b)
-      {
-         $shortcode = $this->getShortName($shortcode);
-
-         // записываем историю
-         $this->historyToAddQueue[$this->currentLevel][$shortcode] = $b;
-
-         if($last)
-         {
-            $this->currentQueue[] = [null, $shortcode, $value];
-         }
-         else
-         {
-            array_splice($this->currentQueue, ($this->iteration+1), 0, [[null, $shortcode, $value]]);
-         }
-         $this->count++;
-      }
-      // ресетим очередь
-      $this->toAddCurrentQueue = [];
    }
 
    /**
@@ -282,7 +315,16 @@ Class ShortCode
    private function matchShortCode (string &$txt):void
    {
       preg_match_all('#\[\[([a-zA-Z_0-9]{3,45})\#(.*?)\]\]#ms', $txt, $this->currentQueue, PREG_SET_ORDER);
-      
+      // получаем ключи массива
+      $this->keysCurrentQueue = [];
+      if(sizeof($this->currentQueue))
+      {
+         foreach($this->currentQueue as $key => $v)
+         {
+            // так как одинаковых шорткодов может быть много, делаем многомерный массив с ключами
+            $this->keysCurrentQueue[ $this->getPrefixName($v[1]) ][] = $key;
+         }
+      }
    }
 
    /**
@@ -311,11 +353,50 @@ Class ShortCode
       return ($pos = strpos('-' . $txt, '[[')) && ($pos = strpos($txt, '#', $pos)) && strpos($txt, ']]', $pos);
    }
 
+   /**
+    * проверяем шорткоды на каждом уровне. И удаляем найденную.
+    * переделать
+    */
+   private function removeSCAllQueue ():void
+   {
+      if(!sizeof($this->forDeletionAllQueue))
+      {
+         return;
+      }
+      foreach($this->forDeletionAllQueue as $prefixName => $all)
+      {
+         if(isset($this->keysCurrentQueue[$prefixName]))
+         {
+            if($all)
+            {
+               foreach($this->keysCurrentQueue[$prefixName] as $key)
+               {
+                  if(isset($this->currentQueue[ $key ]))
+                  {
+                     unset($this->currentQueue[ $key ]);
+                  }
+               }
+            }
+            else
+            {
+               if(isset($this->currentQueue[ current($this->keysCurrentQueue[$prefixName]) ]))
+               {
+                  unset($this->currentQueue[ current($this->keysCurrentQueue[$prefixName]) ]);
+               }
+            }
+            unset($this->forDeletionAllQueue[$prefixName]);
+            // записываем удаление
+            $this->removed[$prefixName] = true;
+         }
+      }
+   }
+
    private function work (string &$txt)
    {
       if($this->signsShortCode($txt))
       {
          $this->matchShortCode($txt);
+         $this->removeSCAllQueue();
          $this->setLevel();
          $this->checkValueControlChar();
          $this->count = sizeof($this->currentQueue);
@@ -487,7 +568,7 @@ Class ShortCode
          'lastLevel' => $this->lastLevel,
          'count' => $this->count,
          'iteration' => $this->iteration,
-         'forDeletion' => $this->forDeletion,
+         'forDeletionAllQueue' => $this->forDeletionAllQueue,
          'currentShortCode' => $this->currentShortCode,
          'instance' => self::$instance,
       ];
